@@ -1,3 +1,36 @@
-crawer_result
-book
-*.pyc
+# 爬虫结果
+crawer_result/
+book/
+
+# 数据文件
+*.json
+*.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# 虚拟环境
+.venv/
+venv/
+ENV/
+
+# 调试文件
+debug_html/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 测试
+.pytest_cache/
+.coverage
+htmlcov/
+
+# UV
+*.lock

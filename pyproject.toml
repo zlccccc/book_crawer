@@ -6,7 +6,7 @@
 name = "novel-crawler"
 description = "小说爬虫系统，支持多网站小说爬取"
 authors = [{ name = "Your Name", email = "your.email@example.com" }]
-version = "0.1.0"
+version = "0.2.0"
 readme = "README.md"
 requires-python = ">=3.9"
 
@@ -22,3 +22,44 @@ dependencies = [
 env = [
     "python-dotenv>=1.0.0",
 ]
+
+# 开发依赖
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+    "pytest>=7.0.0",
+]
+
+[project.scripts]
+novel-crawler = "src.run_crawler:main"
+
+[tool.ruff]
+# 代码风格配置
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+# 启用的规则
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.mypy]
+# 类型检查配置
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
