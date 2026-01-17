@@ -3,10 +3,15 @@
 
 import sys
 import subprocess
+import os
 
 
 def main():
     """运行所有测试文件"""
+    # 获取项目根目录（scripts的父目录）
+    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    os.chdir(root_dir)
+
     print("=" * 60)
     print("运行单元测试...")
     print("=" * 60)

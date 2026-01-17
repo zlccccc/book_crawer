@@ -11,11 +11,18 @@ crawer/
 │   ├── crawer_77shuwu.py     # 77读书网
 │   ├── crawer_huanghelou.py  # 黄鹤楼文学
 │   └── utils.py              # 工具函数
-├── tests/
+├── tests/                    # 测试目录
 │   ├── test_crawler.py       # 单元测试
 │   └── test_integration.py   # 集成测试
-├── run_crawler.py            # 统一运行脚本
-├── run_tests.py              # 测试运行脚本
+├── scripts/                  # 运行脚本
+│   ├── run_crawler.py        # 爬虫运行脚本
+│   ├── run_tests.py          # 测试运行脚本
+│   └── run_lint.py           # 代码检查脚本
+├── skills/                   # 操作文档
+│   ├── new-crawler.md        # 开发新爬虫
+│   ├── debug-site.md         # 调试网站
+│   ├── troubleshooting.md    # 故障排查
+│   └── git-workflow.md       # Git 工作流
 ├── pyproject.toml            # 项目配置
 ├── book/                     # 存储目录
 └── crawer_result/            # 结果目录（JSON + TXT）
@@ -33,11 +40,11 @@ uv sync  # 或 pip install -r requirements.txt
 
 ```bash
 # 统一运行脚本（推荐）
-python run_crawler.py 77shuwu --homepage_url "http://www.77shuku.org/novel/62042/"
-python run_crawler.py huanghelou --homepage_url "https://www.hhlwx.org/hhlchapter/69730.html"
+python scripts/run_crawler.py 77shuwu --homepage_url "http://www.77shuku.org/novel/62042/"
+python scripts/run_crawler.py huanghelou --homepage_url "https://www.hhlwx.org/hhlchapter/69730.html"
 
 # 启用调试/限制章节数
-python run_crawler.py 77shuwu --debug_enabled true --max_chapters 50
+python scripts/run_crawler.py 77shuwu --debug_enabled true --max_chapters 50
 ```
 
 ### 运行测试
@@ -46,12 +53,22 @@ python run_crawler.py 77shuwu --debug_enabled true --max_chapters 50
 
 ```bash
 # 运行所有测试
-python run_tests.py
+python scripts/run_tests.py
 
 # 或单独运行
 python tests/test_crawler.py        # 单元测试
 python tests/test_integration.py    # 集成测试
 ```
+
+### 代码检查
+
+**提交代码前运行代码检查**：
+
+```bash
+python scripts/run_lint.py
+```
+
+包括：Ruff 代码风格检查、Mypy 类型检查、测试
 
 ## 命令行参数
 

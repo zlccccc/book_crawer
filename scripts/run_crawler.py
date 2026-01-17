@@ -4,8 +4,10 @@
 import sys
 import os
 
-# 添加 src 目录到路径
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+# 获取项目根目录并添加 src 到路径
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(root_dir, 'src'))
+os.chdir(root_dir)
 
 import argparse
 from src.crawer_77shuwu import SevenSevenShuWuCrawler
@@ -27,16 +29,16 @@ def main():
         epilog="""
 示例用法:
   # 使用77读书网爬虫
-  python run_crawler.py 77shuwu --homepage_url "http://www.77shuku.org/novel/62042/"
+  python scripts/run_crawler.py 77shuwu --homepage_url "http://www.77shuku.org/novel/62042/"
 
   # 使用黄鹤楼文学爬虫
-  python run_crawler.py huanghelou --homepage_url "https://www.hhlwx.org/hhlchapter/69730.html"
+  python scripts/run_crawler.py huanghelou --homepage_url "https://www.hhlwx.org/hhlchapter/69730.html"
 
   # 启用调试模式
-  python run_crawler.py 77shuwu --debug_enabled true
+  python scripts/run_crawler.py 77shuwu --debug_enabled true
 
   # 限制爬取章节数
-  python run_crawler.py 77shuwu --max_chapters 50
+  python scripts/run_crawler.py 77shuwu --max_chapters 50
         """
     )
 
