@@ -1,6 +1,8 @@
-from typing import List, Tuple
+from __future__ import annotations
 
-import requests
+import argparse
+from typing import cast
+
 from bs4 import BeautifulSoup
 
 from .base_crawler import BaseCrawler
@@ -32,36 +34,17 @@ class HuangHeLouCrawler(BaseCrawler):
         )
 
     @classmethod
-    def parse_args(cls):
+    def parse_args(
+        cls, defaults: dict[str, object] | None = None
+    ) -> argparse.Namespace:
         """解析命令行参数，设置黄鹤楼文学的默认数据源参数"""
-        import argparse
+        crawler_defaults = {
+            'homepage_url': 'https://www.hhlwx.org/hhlchapter/69730.html',
+            'base_url': 'https://www.hhlwx.org'
+        }
+        return super().parse_args(crawler_defaults)
 
-        parser = argparse.ArgumentParser(description='黄鹤楼文学小说爬虫')
-        parser.add_argument('--homepage_url', type=str,
-                            default='https://www.hhlwx.org/hhlchapter/69730.html',
-                            help='小说主页URL')
-        parser.add_argument('--base_url', type=str,
-                            default='https://www.hhlwx.org',
-                            help='网站基础URL')
-        parser.add_argument('--max_chapters', type=int,
-                            default=100000,
-                            help='最大爬取章节数')
-        parser.add_argument('--max_retries', type=int,
-                            default=3,
-                            help='每个章节的最大重试次数')
-        parser.add_argument('--debug_dir', type=str,
-                            default='debug_html',
-                            help='调试HTML保存目录')
-        parser.add_argument('--debug_enabled', type=lambda x: x.lower() == 'true',
-                            default=False,
-                            help='是否启用调试模式 (true/false)')
-        parser.add_argument('--clear_files', type=lambda x: x.lower() == 'true',
-                            default=False,
-                            help='是否在爬取前清空已存在的文件 (true/false)')
-
-        return parser.parse_args()
-
-    def get_page_urls(self, url: str) -> Tuple[str, List[Tuple[str, str]]]:
+    def get_page_urls(self, url: str) -> tuple[str, list[tuple[str, str]]]:
         """从首页获取所有章节URL
 
         Args:
@@ -105,9 +88,9 @@ class HuangHeLouCrawler(BaseCrawler):
         if not h1_tag:
             raise Exception("标题h1标签未找到")
 
-        return h1_tag.text.strip()
+        return cast(str, h1_tag.get_text(strip=True))
 
-    def _extract_chapter_links(self, soup: BeautifulSoup) -> List[Tuple[str, str]]:
+    def _extract_chapter_links(self, soup: BeautifulSoup) -> list[tuple[str, str]]:
         """从HTML中提取章节链接
 
         Args:
@@ -117,21 +100,21 @@ class HuangHeLouCrawler(BaseCrawler):
             [(章节标题, 章节URL), ...]
         """
         chapter_links = soup.find_all("td", class_=self.CHAPTER_LINK_CLASS)
-        page_urls: List[Tuple[str, str]] = []
+        page_urls: list[tuple[str, str]] = []
 
         for link in chapter_links:
             a_tag = link.find("a")
             if not a_tag or not a_tag.attrs.get("href"):
                 continue
 
-            href = a_tag.attrs["href"]
-            title = a_tag.text.strip()
+            href = cast(str, a_tag.get("href"))
+            title = a_tag.get_text(strip=True)
             full_url = self.base_url + href
             page_urls.append((title, full_url))
 
         return page_urls
 
-    def get_chapter_content(self, url: str) -> Tuple[str, str]:
+    def get_chapter_content(self, url: str) -> tuple[str, str]:
         """解析网页并获取小说内容
 
         Args:
@@ -177,7 +160,7 @@ class HuangHeLouCrawler(BaseCrawler):
         if not title_content or not title_content.attrs.get("content"):
             raise Exception("标题未找到 in HTML content")
 
-        return title_content.attrs["content"]
+        return cast(str, title_content.get("content"))
 
     def _extract_chapter_text(self, soup: BeautifulSoup) -> str:
         """从HTML中提取章节正文
@@ -196,27 +179,6 @@ class HuangHeLouCrawler(BaseCrawler):
             raise Exception("小说内容未找到 in HTML content")
 
         return novel_content.get_text()
-
-    def _send_request(self, url: str, timeout: int = 4) -> requests.Response:
-        """发送HTTP请求的封装方法
-
-        Args:
-            url: 请求URL
-            timeout: 超时时间（秒）
-
-        Returns:
-            HTTP响应对象
-
-        Raises:
-            Exception: 请求失败时抛出异常
-        """
-        response = requests.get(url, headers=self.headers, timeout=timeout)
-
-        if response.status_code != 200:
-            self.logger.error(f"请求失败，状态码: {response.status_code}")
-            raise Exception(f"Failed to fetch page {url}")
-
-        return response
 
 
 if __name__ == "__main__":

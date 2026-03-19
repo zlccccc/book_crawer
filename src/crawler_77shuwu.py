@@ -1,8 +1,11 @@
+from __future__ import annotations
+
+import argparse
 import re
-from typing import List, Tuple, Optional
+from typing import cast
 
 from bs4 import BeautifulSoup
-import requests
+from bs4.element import NavigableString, Tag
 
 from .base_crawler import BaseCrawler
 from .utils import save_debug_html
@@ -59,8 +62,8 @@ class SevenSevenShuWuCrawler(BaseCrawler):
             homepage_url, base_url, max_chapters, max_retries,
             debug_dir, debug_enabled, clear_files
         )
-    
-    def get_page_urls(self, url: str) -> Tuple[str, List[Tuple[str, str]]]:
+
+    def get_page_urls(self, url: str) -> tuple[str, list[tuple[str, str]]]:
         """获取章节链接列表，使用href前缀过滤
 
         Args:
@@ -134,7 +137,7 @@ class SevenSevenShuWuCrawler(BaseCrawler):
         self,
         soup: BeautifulSoup,
         novel_id: str,
-    ) -> List[Tuple[str, str]]:
+    ) -> list[tuple[str, str]]:
         """从HTML中提取章节链接
 
         Args:
@@ -144,13 +147,17 @@ class SevenSevenShuWuCrawler(BaseCrawler):
         Returns:
             [(章节标题, 章节URL), ...]
         """
-        chapter_links: List[Tuple[str, str]] = []
+        chapter_links: list[tuple[str, str]] = []
         self.logger.info("使用href前缀过滤获取章节链接...")
 
         all_links = soup.find_all('a', href=True)
         for link in all_links:
-            href = link['href']
-            text = link.text.strip()
+            href_attr = link.get('href')
+            if not isinstance(href_attr, str):
+                continue
+
+            href = href_attr
+            text = link.get_text(strip=True)
 
             # 确保文本不为空且长度合理
             if not text or len(text) > 50:
@@ -191,8 +198,8 @@ class SevenSevenShuWuCrawler(BaseCrawler):
 
     def _deduplicate_and_sort_links(
         self,
-        chapter_links: List[Tuple[str, str]],
-    ) -> List[Tuple[str, str]]:
+        chapter_links: list[tuple[str, str]],
+    ) -> list[tuple[str, str]]:
         """去重并排序章节链接
 
         Args:
@@ -213,7 +220,7 @@ class SevenSevenShuWuCrawler(BaseCrawler):
         unique_links.sort(key=lambda x: x[1])
         return unique_links
 
-    def get_chapter_content(self, url: str) -> Tuple[str, str]:
+    def get_chapter_content(self, url: str) -> tuple[str, str]:
         """获取单个章节内容，使用HTML标签结构进行内容过滤
 
         Args:
@@ -263,14 +270,14 @@ class SevenSevenShuWuCrawler(BaseCrawler):
         if h1_tag:
             h1_text = h1_tag.text.strip()
             if h1_text and "立即阅读" not in h1_text and len(h1_text) < 100:
-                return h1_text
+                return cast(str, h1_text)
 
         # 方法2: 查找meta标签
         meta_title = soup.find('meta', property='og:title')
         if meta_title and meta_title.get('content'):
-            meta_text = meta_title['content'].strip()
+            meta_text = cast(str, meta_title.get('content')).strip()
             if meta_text and "立即阅读" not in meta_text:
-                return meta_text
+                return cast(str, meta_text)
 
         # 方法3: 查找title标签
         title_tag = soup.find('title')
@@ -281,7 +288,7 @@ class SevenSevenShuWuCrawler(BaseCrawler):
                 if title_text.endswith(suffix):
                     title_text = title_text[:-len(suffix)]
             if title_text and "立即阅读" not in title_text and len(title_text) > 5:
-                return title_text
+                return cast(str, title_text)
 
         # 方法4: 从URL中提取
         url_parts = url.split('/')
@@ -291,7 +298,7 @@ class SevenSevenShuWuCrawler(BaseCrawler):
 
         return "未知章节"
 
-    def _extract_content_from_chapter_contents(self, soup: BeautifulSoup) -> Optional[str]:
+    def _extract_content_from_chapter_contents(self, soup: BeautifulSoup) -> str | None:
         """从div#ChapterContents中提取内容
 
         Args:
@@ -327,7 +334,7 @@ class SevenSevenShuWuCrawler(BaseCrawler):
 
         return None
 
-    def _extract_paragraphs_from_div(self, content_div) -> List[str]:
+    def _extract_paragraphs_from_div(self, content_div: Tag) -> list[str]:
         """从div中提取段落
 
         Args:
@@ -336,19 +343,19 @@ class SevenSevenShuWuCrawler(BaseCrawler):
         Returns:
             段落列表
         """
-        paragraphs = []
-        current_text = []
+        paragraphs: list[str] = []
+        current_text: list[str] = []
 
         for element in content_div.contents:
-            if element.name == 'br':
+            if isinstance(element, Tag) and element.name == 'br':
                 if current_text:
                     paragraphs.append(''.join(current_text))
                     current_text = []
-            elif element.string:
-                text = element.string.strip()
+            elif isinstance(element, NavigableString):
+                text = str(element).strip()
                 if text:
                     current_text.append(text)
-            elif element.name:
+            elif isinstance(element, Tag):
                 tag_text = element.get_text().strip()
                 if tag_text:
                     current_text.append(tag_text)
@@ -359,7 +366,7 @@ class SevenSevenShuWuCrawler(BaseCrawler):
 
         return paragraphs
 
-    def _extract_content_from_selectors(self, soup: BeautifulSoup) -> Optional[str]:
+    def _extract_content_from_selectors(self, soup: BeautifulSoup) -> str | None:
         """使用CSS选择器提取内容
 
         Args:
@@ -456,57 +463,16 @@ class SevenSevenShuWuCrawler(BaseCrawler):
 
         return content.strip()
 
-    def _send_request(self, url: str, timeout: int = 10) -> requests.Response:
-        """发送HTTP请求的封装方法
-
-        Args:
-            url: 请求URL
-            timeout: 超时时间（秒）
-
-        Returns:
-            HTTP响应对象
-
-        Raises:
-            Exception: 请求失败时抛出异常
-        """
-        response = requests.get(url, headers=self.headers, timeout=timeout)
-        response.encoding = response.apparent_encoding
-
-        if response.status_code != 200:
-            self.logger.error(f"请求失败，状态码: {response.status_code}")
-            raise Exception(f"请求失败，状态码: {response.status_code}")
-
-        return response
-
     @classmethod
-    def parse_args(cls):
+    def parse_args(
+        cls, defaults: dict[str, object] | None = None
+    ) -> argparse.Namespace:
         """解析命令行参数，设置77书屋的默认数据源参数"""
-        import argparse
-
-        parser = argparse.ArgumentParser(description='77书屋小说爬虫')
-        parser.add_argument('--homepage_url', type=str,
-                            default='http://www.77shuku.org/novel/62042/',
-                            help='小说主页URL')
-        parser.add_argument('--base_url', type=str,
-                            default='https://www.77shuwu.org',
-                            help='网站基础URL')
-        parser.add_argument('--max_chapters', type=int,
-                            default=100000,
-                            help='最大爬取章节数')
-        parser.add_argument('--max_retries', type=int,
-                            default=3,
-                            help='每个章节的最大重试次数')
-        parser.add_argument('--debug_dir', type=str,
-                            default='debug_html',
-                            help='调试HTML保存目录')
-        parser.add_argument('--debug_enabled', type=lambda x: x.lower() == 'true',
-                            default=False,
-                            help='是否启用调试模式 (true/false)')
-        parser.add_argument('--clear_files', type=lambda x: x.lower() == 'true',
-                            default=False,
-                            help='是否在爬取前清空已存在的文件 (true/false)')
-
-        return parser.parse_args()
+        crawler_defaults = {
+            'homepage_url': 'http://www.77shuku.org/novel/62042/',
+            'base_url': 'https://www.77shuwu.org'
+        }
+        return super().parse_args(crawler_defaults)
 
 
 if __name__ == "__main__":

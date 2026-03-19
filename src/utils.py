@@ -3,14 +3,15 @@
 提供日志配置、文件操作、数据处理等通用功能。
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import os
 import random
 import re
 import time
-from typing import Dict, List, Optional, Tuple
-
+from typing import IO
 
 # 日志器名称
 LOGGER_NAME = 'novel_crawler'
@@ -19,11 +20,12 @@ LOGGER_NAME = 'novel_crawler'
 INVALID_FILENAME_CHARS = '/:*?"<>|'
 
 
-def setup_logger(log_file: Optional[str] = None) -> logging.Logger:
+def setup_logger(log_file: str | None = None, log_level: int = logging.INFO) -> logging.Logger:
     """配置日志记录器，使用Python内置logging模块
 
     Args:
         log_file: 日志文件名，如果提供，则将日志保存到该文件中
+        log_level: 日志级别，默认为INFO
 
     Returns:
         配置好的logger实例
@@ -35,23 +37,23 @@ def setup_logger(log_file: Optional[str] = None) -> logging.Logger:
         logger.handlers.clear()
 
     # 设置日志级别
-    logger.setLevel(logging.INFO)
+    logger.setLevel(log_level)
 
     # 创建格式化器
     formatter = logging.Formatter(
-        '%(asctime)s | %(filename)s:%(lineno)d | %(levelname)s | %(message)s',
+        '%(asctime)s | %(name)s | %(filename)s:%(lineno)d | %(levelname)-8s | %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
     # 添加控制台处理器
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
+    console_handler.setLevel(log_level)
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
 
     # 如果需要，添加文件处理器
     if log_file:
-        _add_file_handler(logger, log_file, formatter)
+        _add_file_handler(logger, log_file, formatter, log_level)
 
     return logger
 
@@ -60,6 +62,7 @@ def _add_file_handler(
     logger: logging.Logger,
     log_file: str,
     formatter: logging.Formatter,
+    log_level: int = logging.INFO,
 ) -> None:
     """添加文件处理器到logger
 
@@ -67,19 +70,20 @@ def _add_file_handler(
         logger: Logger实例
         log_file: 日志文件路径
         formatter: 日志格式化器
+        log_level: 日志级别
     """
     log_dir = os.path.dirname(log_file)
     if log_dir and not os.path.exists(log_dir):
         os.makedirs(log_dir, exist_ok=True)
 
     file_handler = logging.FileHandler(log_file, encoding='utf-8')
-    file_handler.setLevel(logging.INFO)
+    file_handler.setLevel(log_level)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
     logger.info(f"日志文件已配置: {log_file}")
 
 
-def save_chapter_to_json(content_title: str, json_content: Dict[str, str]) -> None:
+def save_chapter_to_json(content_title: str, json_content: dict[str, str]) -> None:
     """保存章节内容到JSON文件
 
     Args:
@@ -95,7 +99,7 @@ def save_chapter_to_json(content_title: str, json_content: Dict[str, str]) -> No
     logger.info(f"已保存JSON数据到 {filepath}")
 
 
-def load_existing_json(content_title: str) -> Dict[str, str]:
+def load_existing_json(content_title: str) -> dict[str, str]:
     """加载已存在的JSON数据，处理空文件情况
 
     Args:
@@ -111,12 +115,16 @@ def load_existing_json(content_title: str) -> Dict[str, str]:
         return {}
 
     try:
-        with open(filepath, "r", encoding="utf-8") as json_file:
+        with open(filepath, encoding="utf-8") as json_file:
             file_content = json_file.read().strip()
             if file_content:
-                json_content = json.loads(file_content)
-                logger.info(f"已加载现有数据，共{len(json_content)}章")
-                return json_content
+                loaded = json.loads(file_content)
+                if isinstance(loaded, dict):
+                    json_content = {str(key): str(value) for key, value in loaded.items()}
+                    logger.info(f"已加载现有数据，共{len(json_content)}章")
+                    return json_content
+                logger.error("JSON文件格式错误，将创建新的数据结构")
+                return {}
             else:
                 logger.info("JSON文件存在但为空，创建新的数据结构")
                 return {}
@@ -127,8 +135,8 @@ def load_existing_json(content_title: str) -> Dict[str, str]:
 
 def save_novel_to_txt(
     content_title: str,
-    normalized_titles: List[str],
-    json_content: Dict[str, str],
+    normalized_titles: list[str],
+    json_content: dict[str, str],
 ) -> str:
     """将小说内容保存到TXT文件
 
@@ -163,10 +171,10 @@ def save_novel_to_txt(
 
 
 def _write_unmatched_titles(
-    file_handle,
-    not_found_titles: set,
+    file_handle: IO[str],
+    not_found_titles: set[str],
     logger: logging.Logger,
-    json_content: Dict[str, str],
+    json_content: dict[str, str],
 ) -> None:
     """写入未匹配的章节标题
 
@@ -188,7 +196,7 @@ def _write_unmatched_titles(
         logger.info(f"未匹配上: {title}, 已写入文件最后")
 
 
-def normalize_chapter_title(title: str, page_num: int) -> Tuple[str, int]:
+def normalize_chapter_title(title: str, page_num: int) -> tuple[str, int]:
     """规范化章节标题格式，过滤无效文本
 
     Args:
@@ -267,7 +275,7 @@ def save_debug_html(
     url: str,
     debug_dir: str = "debug_html",
     debug_enabled: bool = True,
-) -> Optional[str]:
+) -> str | None:
     """保存调试HTML文件到指定目录
 
     Args:

@@ -17,14 +17,11 @@ dependencies = [
     "tqdm>=4.64.0",
 ]
 
-# 可选依赖
+# 可选依赖和开发依赖
 [project.optional-dependencies]
 env = [
     "python-dotenv>=1.0.0",
 ]
-
-# 开发依赖
-[project.optional-dependencies]
 dev = [
     "mypy>=1.0.0",
     "ruff>=0.1.0",
@@ -32,7 +29,7 @@ dev = [
 ]
 
 [project.scripts]
-novel-crawler = "src.run_crawler:main"
+novel-crawler = "scripts.run_crawler:main"
 
 [tool.ruff]
 # 代码风格配置
@@ -63,3 +60,7 @@ disallow_untyped_defs = false
 disallow_incomplete_defs = false
 check_untyped_defs = true
 no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = ["requests", "tqdm"]
+ignore_missing_imports = true

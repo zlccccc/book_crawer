@@ -1,18 +1,23 @@
-import argparse
-import os
-from typing import List, Tuple, Dict
-from abc import ABC, abstractmethod
+from __future__ import annotations
 
+import argparse
+import json
+import os
+from abc import ABC, abstractmethod
+from types import SimpleNamespace
+from typing import Any, cast
+
+import requests
 from tqdm import tqdm
 
 from .utils import (
-    setup_logger,
-    save_chapter_to_json,
     load_existing_json,
-    save_novel_to_txt,
     normalize_chapter_title,
     random_delay,
+    save_chapter_to_json,
     save_debug_html,
+    save_novel_to_txt,
+    setup_logger,
 )
 
 
@@ -34,6 +39,8 @@ class BaseCrawler(ABC):
         debug_dir: str = "debug_html",
         debug_enabled: bool = False,
         clear_files: bool = True,
+        enable_cache: bool = True,
+        cache_size: int = 100,
     ) -> None:
         """初始化爬虫
 
@@ -45,6 +52,8 @@ class BaseCrawler(ABC):
             debug_dir: 调试文件保存目录
             debug_enabled: 是否启用调试模式
             clear_files: 是否在爬取前清空已存在的文件
+            enable_cache: 是否启用缓存机制
+            cache_size: 缓存大小
         """
         self.homepage_url = homepage_url
         self.base_url = base_url
@@ -53,11 +62,14 @@ class BaseCrawler(ABC):
         self.debug_dir = debug_dir
         self.debug_enabled = debug_enabled
         self.clear_files = clear_files
+        self.enable_cache = enable_cache
+        self.cache_size = cache_size
+        self.cache: dict[str, str] = {}
         self.logger = setup_logger()
         self.headers = self.DEFAULT_HEADERS.copy()
 
     @abstractmethod
-    def get_page_urls(self, url: str) -> Tuple[str, List[Tuple[str, str]]]:
+    def get_page_urls(self, url: str) -> tuple[str, list[tuple[str, str]]]:
         """获取章节链接列表
 
         Args:
@@ -71,7 +83,7 @@ class BaseCrawler(ABC):
         raise NotImplementedError("子类必须实现get_page_urls方法")
 
     @abstractmethod
-    def get_chapter_content(self, url: str) -> Tuple[str, str]:
+    def get_chapter_content(self, url: str) -> tuple[str, str]:
         """获取章节内容
 
         Args:
@@ -101,9 +113,9 @@ class BaseCrawler(ABC):
                     with open(filepath, 'w', encoding='utf-8') as f:
                         f.write(content)
                     self.logger.info(f"已清空 {filepath}")
-                except IOError as e:
+                except OSError as e:
                     self.logger.error(f"清空文件失败 {filepath}: {e}")
-    
+
     def crawl(self) -> None:
         """执行爬取流程"""
         try:
@@ -130,7 +142,7 @@ class BaseCrawler(ABC):
 
             # 过滤出未爬取的章节
             normalized_titles = []
-            uncrawled_chapters: Dict[str, str] = {}
+            uncrawled_chapters: dict[str, str] = {}
             for title, url in page_urls:
                 normalized_title, _ = normalize_chapter_title(title, 1)
                 normalized_titles.append(normalized_title)
@@ -151,16 +163,27 @@ class BaseCrawler(ABC):
             # 保存为TXT文件
             save_novel_to_txt(content_title, normalized_titles, json_content)
 
+        except requests.RequestException as err:
+            self.logger.error(f"网络请求失败: {err}")
+            self._save_debug_html_on_error()
+        except json.JSONDecodeError as err:
+            self.logger.error(f"JSON解析错误: {err}")
+        except FileNotFoundError as err:
+            self.logger.error(f"文件不存在: {err}")
+        except PermissionError as err:
+            self.logger.error(f"权限错误: {err}")
         except Exception as err:
             self.logger.error(f"爬取失败: {err}")
+            import traceback
+            self.logger.error(f"异常详情: {traceback.format_exc()}")
             self._save_debug_html_on_error()
 
     def _crawl_chapters(
         self,
-        chapters_to_crawl: List[Tuple[str, str]],
+        chapters_to_crawl: list[tuple[str, str]],
         content_title: str,
-        json_content: Dict[str, str],
-        normalized_titles: List[str],
+        json_content: dict[str, str],
+        normalized_titles: list[str],
     ) -> None:
         """爬取章节内容
 
@@ -190,7 +213,7 @@ class BaseCrawler(ABC):
         page_url: str,
         normalized_title: str,
         content_title: str,
-        json_content: Dict[str, str],
+        json_content: dict[str, str],
         retry_num: int,
     ) -> None:
         """带重试机制的章节获取
@@ -233,13 +256,56 @@ class BaseCrawler(ABC):
                 else:
                     self.logger.error(f"达到最大重试次数 {self.max_retries}，放弃该章节")
 
+    def _send_request(self, url: str, timeout: int = 10) -> requests.Response:
+        """发送HTTP请求的封装方法
+
+        Args:
+            url: 请求URL
+            timeout: 超时时间（秒）
+
+        Returns:
+            HTTP响应对象
+
+        Raises:
+            Exception: 请求失败时抛出异常
+        """
+        # 检查缓存
+        if self.enable_cache and url in self.cache:
+            self.logger.debug(f"从缓存获取: {url}")
+            # 创建一个模拟的响应对象
+            mock_response = SimpleNamespace()
+            mock_response.text = self.cache[url]
+            mock_response.status_code = 200
+            mock_response.encoding = 'utf-8'
+            mock_response.apparent_encoding = 'utf-8'
+            return cast(requests.Response, mock_response)
+
+        # 发送实际请求
+        response = requests.get(url, headers=self.headers, timeout=timeout)
+        response.encoding = response.apparent_encoding
+
+        if response.status_code != 200:
+            self.logger.error(f"请求失败，状态码: {response.status_code}")
+            raise Exception(f"请求失败，状态码: {response.status_code}")
+
+        # 存入缓存
+        if self.enable_cache:
+            if len(self.cache) >= self.cache_size:
+                # 移除最早的缓存项
+                oldest_url = next(iter(self.cache))
+                self.cache.pop(oldest_url)
+            self.cache[url] = response.text
+            self.logger.debug(f"缓存保存: {url}")
+
+        return response
+
     def _save_debug_html_on_error(self) -> None:
         """在错误发生时保存调试HTML"""
         if not self.debug_enabled:
             return
 
         try:
-            response = requests.get(self.homepage_url, headers=self.headers)
+            response = self._send_request(self.homepage_url)
             save_debug_html(
                 response.text,
                 f"debug_{self.__class__.__name__}",
@@ -251,54 +317,86 @@ class BaseCrawler(ABC):
             self.logger.error(f"保存调试文件失败: {e}")
 
     @classmethod
-    def parse_args(cls) -> argparse.Namespace:
+    def parse_args(
+        cls, defaults: dict[str, Any] | None = None
+    ) -> argparse.Namespace:
         """解析命令行参数
+
+        Args:
+            defaults: 默认参数值字典
 
         Returns:
             解析后的参数命名空间
         """
+        default_values: dict[str, Any] = {
+            'homepage_url': '',
+            'base_url': '',
+            'max_chapters': 100000,
+            'max_retries': 3,
+            'debug_dir': 'debug_html',
+            'debug_enabled': False,
+            'clear_files': False,
+            'enable_cache': True,
+            'cache_size': 100
+        }
+
+        if defaults:
+            default_values.update(defaults)
+
         parser = argparse.ArgumentParser(description=f'{cls.__name__} 小说爬虫')
         parser.add_argument(
             '--homepage_url',
             type=str,
-            default='',
+            default=default_values['homepage_url'],
             help='小说主页URL'
         )
         parser.add_argument(
             '--base_url',
             type=str,
-            default='',
+            default=default_values['base_url'],
             help='网站基础URL'
         )
         parser.add_argument(
             '--max_chapters',
             type=int,
-            default=100000,
+            default=default_values['max_chapters'],
             help='最大爬取章节数'
         )
         parser.add_argument(
             '--max_retries',
             type=int,
-            default=3,
+            default=default_values['max_retries'],
             help='每个章节的最大重试次数'
         )
         parser.add_argument(
             '--debug_dir',
             type=str,
-            default='debug_html',
+            default=default_values['debug_dir'],
             help='调试HTML保存目录'
         )
         parser.add_argument(
             '--debug_enabled',
             type=lambda x: x.lower() == 'true',
-            default=False,
+            default=default_values['debug_enabled'],
             help='是否启用调试模式 (true/false)'
         )
         parser.add_argument(
             '--clear_files',
             type=lambda x: x.lower() == 'true',
-            default=False,
+            default=default_values['clear_files'],
             help='是否在爬取前清空已存在的文件 (true/false)'
+        )
+        parser.add_argument(
+            '--enable_cache',
+            type=lambda x: x.lower() == 'true',
+            default=default_values['enable_cache'],
+            help='是否启用缓存机制 (true/false)'
+        )
+        parser.add_argument(
+            '--cache_size',
+            type=int,
+            default=default_values['cache_size'],
+            help='缓存大小'
         )
 
         return parser.parse_args()
@@ -315,5 +413,7 @@ class BaseCrawler(ABC):
             args.debug_dir,
             args.debug_enabled,
             args.clear_files,
+            args.enable_cache,
+            args.cache_size,
         )
         crawler.crawl()

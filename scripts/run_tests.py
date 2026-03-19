@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """运行所有测试"""
 
-import sys
-import subprocess
 import os
+import subprocess
+import sys
 
 
 def main():

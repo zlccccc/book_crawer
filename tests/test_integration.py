@@ -1,18 +1,20 @@
 """集成测试 - 测试爬虫核心流程"""
 
-import sys
 import os
-import json
-import tempfile
 import shutil
-from unittest.mock import Mock, patch, MagicMock
+import sys
+import tempfile
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import unittest
+
+import requests
 from bs4 import BeautifulSoup
-from src.crawer_77shuwu import SevenSevenShuWuCrawler
-from src.crawer_huanghelou import HuangHeLouCrawler
+
+from src.crawler_77shuwu import SevenSevenShuWuCrawler
+from src.crawler_huanghelou import HuangHeLouCrawler
 
 
 class MockResponse:
@@ -100,7 +102,7 @@ class TestSevenSevenShuWuCrawler(unittest.TestCase):
         cleaned = self.crawler._clean_content(content)
         self.assertNotIn("\n\n\n", cleaned)
 
-    @patch('src.crawer_77shuwu.requests.get')
+    @patch('src.base_crawler.requests.get')
     def test_send_request_success(self, mock_get):
         """测试成功发送请求"""
         mock_get.return_value = MockResponse("<html></html>", 200)
@@ -116,7 +118,7 @@ class TestSevenSevenShuWuCrawler(unittest.TestCase):
         logging.getLogger('novel_crawler').setLevel(logging.CRITICAL + 1)
 
         try:
-            with patch('src.crawer_77shuwu.requests.get') as mock_get:
+            with patch('src.base_crawler.requests.get') as mock_get:
                 mock_get.return_value = MockResponse("<html></html>", 404)
                 with self.assertRaises(Exception) as context:
                     self.crawler._send_request("http://test.com")
@@ -168,7 +170,7 @@ class TestBaseCrawlerIntegration(unittest.TestCase):
 
     def test_clear_existing_files(self):
         """测试清空已存在文件"""
-        from src.crawer_77shuwu import SevenSevenShuWuCrawler
+        from src.crawler_77shuwu import SevenSevenShuWuCrawler
 
         # 创建测试文件
         with open("test.json", "w") as f:
@@ -206,7 +208,7 @@ class TestUtilsIntegration(unittest.TestCase):
 
     def test_save_and_load_json(self):
         """测试JSON保存和加载"""
-        from src.utils import save_chapter_to_json, load_existing_json
+        from src.utils import load_existing_json, save_chapter_to_json
 
         data = {"第一章": "内容1", "第二章": "内容2"}
         save_chapter_to_json("test", data)
@@ -233,7 +235,7 @@ class TestUtilsIntegration(unittest.TestCase):
         filepath = save_novel_to_txt("test", normalized_titles, json_content)
 
         self.assertTrue(os.path.exists(filepath))
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             content = f.read()
             self.assertIn("第一章内容", content)
             self.assertIn("第二章内容", content)
@@ -261,9 +263,16 @@ class TestRealWebRequest(unittest.TestCase):
         os.chdir(self.original_dir)
         shutil.rmtree(self.temp_dir)
 
+    def _assert_request_available(self, request_func):
+        """网络不可用时跳过真实请求测试。"""
+        try:
+            return request_func()
+        except requests.RequestException as exc:
+            self.skipTest(f"真实网络不可用: {exc}")
+
     def test_real_request_to_77shuwu(self):
         """测试真实请求到77读书网"""
-        from src.crawer_77shuwu import SevenSevenShuWuCrawler
+        from src.crawler_77shuwu import SevenSevenShuWuCrawler
 
         crawler = SevenSevenShuWuCrawler(
             homepage_url="http://www.77shuku.org/novel/62042/",
@@ -273,14 +282,16 @@ class TestRealWebRequest(unittest.TestCase):
         )
 
         # 发送真实请求到小说主页
-        response = crawler._send_request("http://www.77shuku.org/novel/62042/")
+        response = self._assert_request_available(
+            lambda: crawler._send_request("http://www.77shuku.org/novel/62042/")
+        )
 
         self.assertEqual(response.status_code, 200)
         self.assertIsNotNone(response.text)
 
     def test_real_request_to_huanghelou(self):
         """测试真实请求到黄鹤楼文学"""
-        from src.crawer_huanghelou import HuangHeLouCrawler
+        from src.crawler_huanghelou import HuangHeLouCrawler
 
         crawler = HuangHeLouCrawler(
             homepage_url="https://www.hhlwx.org/hhlchapter/69730.html",
@@ -290,14 +301,16 @@ class TestRealWebRequest(unittest.TestCase):
         )
 
         # 发送真实请求到小说主页
-        response = crawler._send_request("https://www.hhlwx.org/hhlchapter/69730.html")
+        response = self._assert_request_available(
+            lambda: crawler._send_request("https://www.hhlwx.org/hhlchapter/69730.html")
+        )
 
         self.assertEqual(response.status_code, 200)
         self.assertIsNotNone(response.text)
 
     def test_77shuwu_headers(self):
         """测试77读书网请求头设置"""
-        from src.crawer_77shuwu import SevenSevenShuWuCrawler
+        from src.crawler_77shuwu import SevenSevenShuWuCrawler
 
         crawler = SevenSevenShuWuCrawler(
             homepage_url="http://www.77shuku.org/novel/62042/",
@@ -309,8 +322,9 @@ class TestRealWebRequest(unittest.TestCase):
 
     def test_random_delay_range(self):
         """测试随机延迟在合理范围内"""
-        from src.utils import random_delay
         import time
+
+        from src.utils import random_delay
 
         start = time.time()
         random_delay(0.05, 0.1)  # 50-100ms
@@ -321,8 +335,9 @@ class TestRealWebRequest(unittest.TestCase):
 
     def test_logger_output(self):
         """测试日志输出"""
-        from src.utils import setup_logger
         import logging
+
+        from src.utils import setup_logger
 
         logger = setup_logger()
         self.assertIsNotNone(logger)
