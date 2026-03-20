@@ -4,28 +4,34 @@
 
 ## 项目结构
 
-```
-crawer/
+```text
+crawler/
 ├── src/                      # 源代码
+│   ├── __init__.py           # 包初始化
 │   ├── base_crawler.py       # 爬虫基类（抽象）
-│   ├── crawer_77shuwu.py     # 77读书网
-│   ├── crawer_huanghelou.py  # 黄鹤楼文学
+│   ├── config.py             # 配置与常量
+│   ├── crawler_77shuwu.py    # 77 书屋爬虫
+│   ├── crawler_huanghelou.py # 黄鹤楼文学爬虫
 │   └── utils.py              # 工具函数
+├── scripts/                  # 运行与检查脚本
+│   ├── convert_novel_to_json.py
+│   ├── run_crawler.py
+│   ├── run_lint.py
+│   └── run_tests.py
+├── special_novel_tools/      # 特殊小说处理工具
+│   └── json_to_txt.py        # JSON 转 TXT 工具
 ├── tests/                    # 测试目录
 │   ├── test_crawler.py       # 单元测试
 │   └── test_integration.py   # 集成测试
-├── scripts/                  # 运行脚本
-│   ├── run_crawler.py        # 爬虫运行脚本
-│   ├── run_tests.py          # 测试运行脚本
-│   └── run_lint.py           # 代码检查脚本
-├── skills/                   # 操作文档
-│   ├── new-crawler.md        # 开发新爬虫
-│   ├── debug-site.md         # 调试网站
-│   ├── troubleshooting.md    # 故障排查
-│   └── git-workflow.md       # Git 工作流
+├── docs/                     # 使用与排障文档
+│   ├── debug-site.md
+│   ├── git-workflow.md
+│   ├── new-crawler.md
+│   └── troubleshooting.md
+├── output/                   # 爬虫结果输出目录
 ├── pyproject.toml            # 项目配置
-├── book/                     # 存储目录
-└── crawer_result/            # 结果目录（JSON + TXT）
+├── uv.lock                   # 依赖锁文件
+└── README.md                 # 项目说明
 ```
 
 ## 快速开始
@@ -33,42 +39,29 @@ crawer/
 ### 安装依赖
 
 ```bash
-uv sync  # 或 pip install -r requirements.txt
+uv sync --extra dev
 ```
 
 ### 运行爬虫
 
 ```bash
-# 统一运行脚本（推荐）
 python scripts/run_crawler.py 77shuwu --homepage_url "http://www.77shuku.org/novel/62042/"
 python scripts/run_crawler.py huanghelou --homepage_url "https://www.hhlwx.org/hhlchapter/69730.html"
-
-# 启用调试/限制章节数
-python scripts/run_crawler.py 77shuwu --debug_enabled true --max_chapters 50
 ```
 
 ### 运行测试
 
-**每次修改代码后必须运行测试**：
-
 ```bash
-# 运行所有测试
 python scripts/run_tests.py
-
-# 或单独运行
-python tests/test_crawler.py        # 单元测试
-python tests/test_integration.py    # 集成测试
 ```
 
 ### 代码检查
 
-**提交代码前运行代码检查**：
-
 ```bash
-python scripts/run_lint.py
+uv run python scripts/run_lint.py
 ```
 
-包括：Ruff 代码风格检查、Mypy 类型检查、测试
+包括：Ruff 代码风格检查、Mypy 类型检查、测试。
 
 ## 命令行参数
 
@@ -83,63 +76,25 @@ python scripts/run_lint.py
 
 ## 开发新爬虫
 
-在 `src/` 下创建文件，继承 `BaseCrawler`：
-
-```python
-# src/my_crawler.py
-from typing import List, Tuple
-from bs4 import BeautifulSoup
-from .base_crawler import BaseCrawler
-
-class MySiteCrawler(BaseCrawler):
-    def get_page_urls(self, url: str) -> Tuple[str, List[Tuple[str, str]]]:
-        response = self._send_request(url)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        title = soup.find('h1').text.strip()
-        chapters = [(link.text.strip(), self.base_url + link['href'])
-                    for link in soup.select('.chapter-link')]
-        return title, chapters
-
-    def get_chapter_content(self, url: str) -> Tuple[str, str]:
-        response = self._send_request(url)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        return soup.find('h1').text.strip(), soup.find('div', class_='content').get_text()
-
-    @classmethod
-    def parse_args(cls):
-        import argparse
-        parser = argparse.ArgumentParser(description='我的小说爬虫')
-        parser.add_argument('--homepage_url', type=str, default='http://example.com/novel/1')
-        parser.add_argument('--base_url', type=str, default='http://example.com')
-        return parser.parse_args()
-
-if __name__ == "__main__":
-    MySiteCrawler.main()
-```
-
-在 `run_crawler.py` 中注册：
-
-```python
-from src.my_crawler import MySiteCrawler
-CRAWLERS = {"77shuwu": SevenSevenShuWuCrawler, "huanghelou": HuangHeLouCrawler, "mysite": MySiteCrawler}
-```
+在 `src/` 下创建文件，继承 `BaseCrawler`，并在 `scripts/run_crawler.py` 中注册。
+详细步骤见 `docs/new-crawler.md`。
 
 ## 核心功能
 
-- **断点续爬** - 基于 JSON 文件自动恢复
-- **自动重试** - 失败递增延迟重试
-- **标题规范化** - 统一章节标题格式
-- **随机延迟** - 防反爬机制
-- **调试模式** - 保存 HTML 便于分析
+- 断点续爬：基于 JSON 文件自动恢复
+- 自动重试：失败递增延迟重试
+- 标题规范化：统一章节标题格式
+- 随机延迟：降低请求频率
+- 调试模式：保存 HTML 便于分析
 
 ## 输出文件
 
-- `{小说名}.json` - 章节数据（断点续爬）
-- `{小说名}.txt` - 完整小说文本
+- `output/{小说名}.json`：章节数据（断点续爬）
+- `output/{小说名}.txt`：完整小说文本
 
 ## 注意事项
 
-1. **每次修改代码后必须运行测试**：`python tests/test_crawler.py`
-2. 遵守网站 robots.txt 和服务条款
-3. 建议先少量测试再全量爬取
-4. 新增爬虫时添加单元测试
+1. 每次修改代码后运行 `python scripts/run_tests.py`。
+2. 提交前运行 `uv run python scripts/run_lint.py`。
+3. 遵守网站 robots.txt 和服务条款。
+4. 建议先少量测试再全量爬取。

@@ -1,19 +1,20 @@
 """测试脚本 - 测试爬虫基本功能"""
 
-import sys
 import os
+import sys
 
 # 添加项目根目录到路径，使 src 成为一个包
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import unittest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch
+
 from src.base_crawler import BaseCrawler
 from src.utils import (
-    setup_logger,
+    _get_safe_filename,
     normalize_chapter_title,
     random_delay,
-    _get_safe_filename,
+    setup_logger,
 )
 
 
